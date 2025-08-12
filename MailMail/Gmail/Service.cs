@@ -42,23 +42,24 @@ namespace MailMail.Gmail
                     ApplicationName = "MailMail"
                 });
 
-                Service.UserService[username] = gmailService; // Store the service in the static dictionary
+                UserService[username] = gmailService; // Store the service in the static dictionary
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error during mail setup: {ex.Message}");
+
                 throw new Exception("Failed to initialize Gmail service. Please check your credentials and try again.", ex);
             }
         }
 
-        public static async Task<List<Mail>> ListRecentInboxAsync(string username, int maxResults = 5, int date = 30)
+        public static async Task<List<Mail>> GetMailListAsync(string username, int maxResults = 5, int date = 30)
         {
             if (string.IsNullOrEmpty(username))
             {
                 throw new ArgumentException("Username cannot be null or empty.", nameof(username));
             }
 
-            if (!Service.UserService.TryGetValue(username, out var svc))
+            if (!UserService.TryGetValue(username, out var svc))
             {
                 throw new KeyNotFoundException($"No Gmail service found for user '{username}'. Please ensure you have called Setup() first.");
             }
@@ -119,27 +120,31 @@ namespace MailMail.Gmail
                     });
 
                     if (results.Count >= maxResults)
+                    {
                         break; // stop early if we've reached the target
+                    }
                 }
 
                 // Move to next page if available
                 pageToken = page.NextPageToken;
 
                 if (string.IsNullOrEmpty(pageToken))
+                {
                     break;
+                }
             }
 
             return results;
         }
 
-        public static async Task<MailDetail> GetMessageDetailAsync(string username, string messageId, bool downloadAttachments = false)
+        public static async Task<MailDetail> GetMailDetailAsync(string username, string messageID, bool downloadAttachments = false)
         {
             if (string.IsNullOrEmpty(username))
             {
                 throw new ArgumentException("Username cannot be null or empty.", nameof(username));
             }
 
-            if (!Service.UserService.TryGetValue(username, out var svc))
+            if (!UserService.TryGetValue(username, out var svc))
             {
                 throw new KeyNotFoundException($"No Gmail service found for user '{username}'. Please ensure you have called Setup() first.");
             }
@@ -149,20 +154,20 @@ namespace MailMail.Gmail
                 throw new ArgumentNullException(nameof(svc));
             }
 
-            if (string.IsNullOrWhiteSpace(messageId))
+            if (string.IsNullOrWhiteSpace(messageID))
             {
-                throw new ArgumentException("messageId required.", nameof(messageId));
+                throw new ArgumentException("messageId required.", nameof(messageID));
             }
 
             // 1) Get full message (headers + structured MIME parts)
-            var getReq = svc.Users.Messages.Get("me", messageId);
+            var getReq = svc.Users.Messages.Get("me", messageID);
             getReq.Format = UsersResource.MessagesResource.GetRequest.FormatEnum.Full;
 
             var msg = await getReq.ExecuteAsync();
 
             var detail = new MailDetail
             {
-                Id = msg.Id,
+                ID = msg.Id,
                 ThreadId = msg.ThreadId,
                 Snippet = msg.Snippet
             };
@@ -175,8 +180,11 @@ namespace MailMail.Gmail
             detail.Subject = GetHeader(msg, "Subject");
 
             var dateRaw = GetHeader(msg, "Date");
+
             if (DateTimeOffset.TryParse(dateRaw, out var dto))
+            {
                 detail.Date = dto;
+            }
 
             // 3) Traverse MIME tree to collect bodies and attachments metadata
             if (msg.Payload != null)
@@ -187,9 +195,9 @@ namespace MailMail.Gmail
             // 4) Optionally download attachment bytes
             if (downloadAttachments && detail.Attachments.Count > 0)
             {
-                foreach (var att in detail.Attachments.Where(a => !string.IsNullOrEmpty(a.AttachmentId)))
+                foreach (var att in detail.Attachments.Where(a => !string.IsNullOrEmpty(a.AttachmentID)))
                 {
-                    var a = await svc.Users.Messages.Attachments.Get("me", messageId, att.AttachmentId).ExecuteAsync();
+                    var a = await svc.Users.Messages.Attachments.Get("me", messageID, att.AttachmentID).ExecuteAsync();
                     if (!string.IsNullOrEmpty(a.Data))
                     {
                         att.Content = FromBase64Url(a.Data);
@@ -200,14 +208,14 @@ namespace MailMail.Gmail
             return detail;
         }
 
-        public static async Task<bool> SendGmailAsync(string username, string to, string subject, string text, string? html = null)
+        public static async Task<bool> SendMailAsync(string username, string to, string subject, string text, string? html = null)
         {
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(to) || string.IsNullOrEmpty(text))
             {
                 throw new ArgumentException("Username, recipient email, and message text cannot be null or empty.");
             }
 
-            if (!Service.UserService.TryGetValue(username, out var svc))
+            if (!UserService.TryGetValue(username, out var svc))
             {
                 throw new KeyNotFoundException($"No Gmail service found for user '{username}'. Please ensure you have called Setup() first.");
             }
@@ -291,7 +299,7 @@ namespace MailMail.Gmail
             {
                 detail.Attachments.Add(new MailAttachment
                 {
-                    AttachmentId = attId,
+                    AttachmentID = attId,
                     Filename = filename,
                     MimeType = mime,
                     Size = part.Body?.Size
@@ -305,7 +313,7 @@ namespace MailMail.Gmail
             {
                 detail.Attachments.Add(new MailAttachment
                 {
-                    AttachmentId = "", // inline small part; no separate download id
+                    AttachmentID = "", // inline small part; no separate download id
                     Filename = filename,
                     MimeType = mime,
                     Size = part.Body?.Size,
@@ -335,8 +343,8 @@ namespace MailMail.Gmail
         {
             var headers = msg.Payload?.Headers;
             var value = headers?.FirstOrDefault(h => h.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Value;
+
             return value ?? string.Empty;
         }
-
     }
 }

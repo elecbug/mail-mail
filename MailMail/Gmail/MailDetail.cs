@@ -2,7 +2,7 @@
 {
     public sealed class MailDetail
     {
-        public string Id { get; set; } = "";
+        public string ID { get; set; } = "";
         public string ThreadId { get; set; } = "";
         public string From { get; set; } = "";
         public string To { get; set; } = "";
@@ -13,12 +13,12 @@
         public string Snippet { get; set; } = "";
         public string TextBody { get; set; } = "";   // concatenated text/plain parts
         public string HtmlBody { get; set; } = "";   // concatenated text/html parts
-        public List<MailAttachment> Attachments { get; set; } = new();
+        public List<MailAttachment> Attachments { get; set; } = [];
     }
 
     public sealed class MailAttachment
     {
-        public string AttachmentId { get; set; } = "";  // Gmail attachment id for later download
+        public string AttachmentID { get; set; } = "";  // Gmail attachment id for later download
         public string Filename { get; set; } = "";
         public string MimeType { get; set; } = "";
         public long? Size { get; set; }

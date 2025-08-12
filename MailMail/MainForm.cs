@@ -1,4 +1,3 @@
-using MailMail.Gmail;
 using System.Diagnostics;
 using Thread = System.Threading.Thread;
 
@@ -6,23 +5,35 @@ namespace MailMail
 {
     public class MainForm : Form
     {
+        private MailPanel _mailPanel;
+
+
         public MainForm()
         {
-            Text = "MailMail - A Simple Mail Client";
+            Text = "Mail Mail - A Simple Mail Client";
             StartPosition = FormStartPosition.CenterScreen;
             Size = new Size(800, 600);
             MinimumSize = new Size(800, 600);
+            
+            _mailPanel = new MailPanel("user1")
+            {
+                Parent = this,
+                Visible = true,
+                Dock = DockStyle.Fill,
+                FullRowSelect = true,
+                View = View.Details,
+            };
 
-            TestSettingMail();
+            //TestSettingMail();
         }
 
         public void TestSettingMail()
         {
             Thread t = new Thread(async () => 
             { 
-                await Service.Setup("user22", false);
+                await Gmail.Service.Setup("user22", false);
 
-                var results = await Service.ListRecentInboxAsync("user22");
+                var results = await Gmail.Service.GetMailListAsync("user22");
 
                 if (results != null && results.Count > 0)
                 {
@@ -31,11 +42,11 @@ namespace MailMail
                         Debug.WriteLine($"From: {mail.From}, Subject: {mail.Subject}, Date: {mail.Date}");
                     }
 
-                    var value = await Service.GetMessageDetailAsync("user22", results[0].ID);
+                    var value = await Gmail.Service.GetMailDetailAsync("user22", results[0].ID);
 
                     if (value != null)
                     {
-                        Debug.WriteLine($"Mail ID: {value.Id}, Subject: {value.Subject}, From: {value.From}");
+                        Debug.WriteLine($"Mail ID: {value.ID}, Subject: {value.Subject}, From: {value.From}");
                         Debug.WriteLine($"Text Body: {value.TextBody}");
                         Debug.WriteLine($"HTML Body: {value.HtmlBody}");
                     }
