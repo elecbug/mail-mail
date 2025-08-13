@@ -2,6 +2,9 @@
 {
     public class MailPanel : ListView
     {
+        private ListViewItem _readMore = new ListViewItem("Read more");
+        private int _readMoreCount = 1;
+
         public string Username { get; private set; }
 
         public MailPanel(string username) : base()
@@ -28,6 +31,15 @@
             }
 
             var item = SelectedItems[0];
+
+            if (item == _readMore)
+            {
+                _readMoreCount += 1;
+
+                await UpdateMails();
+                return;
+            }
+
             var mail = item.Tag as Gmail.ReceivedMail;
             
             if (mail == null)
@@ -49,7 +61,7 @@
         {
             await Gmail.Service.Setup(Username);
 
-            var items = await Gmail.Service.GetMailListAsync(Username);
+            var items = await Gmail.Service.GetMailListAsync(Username, 20 * _readMoreCount, 90 * _readMoreCount);
 
             Invoke(Items.Clear);
 
@@ -63,6 +75,8 @@
 
                 Invoke(() => Items.Add(item));
             }
+
+            Invoke(() => Items.Add(_readMore));
         }
     }
 }
