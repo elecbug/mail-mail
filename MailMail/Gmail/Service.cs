@@ -16,7 +16,7 @@ namespace MailMail.Gmail
     {
         public static Dictionary<string, GmailService> UserService { get; private set; } = new Dictionary<string, GmailService>();
 
-        private static readonly string[] Scopes =
+        private static readonly string[] Scopes = 
         [
             GmailService.Scope.GmailReadonly, // read messages
             GmailService.Scope.GmailSend      // send messages
@@ -52,7 +52,7 @@ namespace MailMail.Gmail
             }
         }
 
-        public static async Task<List<Mail>> GetMailListAsync(string username, int maxResults = 5, int date = 30)
+        public static async Task<List<ReceivedMail>> GetMailListAsync(string username, int maxResults = 20, int date = 90)
         {
             if (string.IsNullOrEmpty(username))
             {
@@ -69,7 +69,7 @@ namespace MailMail.Gmail
                 throw new ArgumentNullException(nameof(svc));
             }
 
-            var results = new List<Mail>();
+            var results = new List<ReceivedMail>();
             string? pageToken = null;
 
             while (results.Count < maxResults)
@@ -110,12 +110,19 @@ namespace MailMail.Gmail
                     getReq.MetadataHeaders = new[] { "From", "Subject", "Date" };
 
                     var full = await getReq.ExecuteAsync();
+                    var dateRaw = GetHeader(full, "Date");
 
-                    results.Add(new Mail
+                    if (RFC2822TimeConverter.TryParseRfc2822Like(dateRaw, out var dto))
+                    {
+                        // Convert to DateTimeOffset with local timezone
+                        dto = RFC2822TimeConverter.ConvertToTimeZone(dto, "Korea Standard Time");
+                    }
+
+                    results.Add(new ReceivedMail
                     {
                         From = GetHeader(full, "From"),
                         Subject = GetHeader(full, "Subject"),
-                        Date = GetHeader(full, "Date"),
+                        Date = dto,
                         ID = m.Id ?? string.Empty,
                     });
 
@@ -137,7 +144,7 @@ namespace MailMail.Gmail
             return results;
         }
 
-        public static async Task<MailDetail> GetMailDetailAsync(string username, string messageID, bool downloadAttachments = false)
+        public static async Task<DetailedMail> GetMailDetailAsync(string username, string messageID, bool downloadAttachments = false)
         {
             if (string.IsNullOrEmpty(username))
             {
@@ -165,24 +172,27 @@ namespace MailMail.Gmail
 
             var msg = await getReq.ExecuteAsync();
 
-            var detail = new MailDetail
+            var detail = new DetailedMail
             {
                 ID = msg.Id,
-                ThreadId = msg.ThreadId,
+                ThreadID = msg.ThreadId,
                 Snippet = msg.Snippet
             };
 
             // 2) Headers
             detail.From = GetHeader(msg, "From");
             detail.To = GetHeader(msg, "To");
-            detail.Cc = GetHeader(msg, "Cc");
-            detail.Bcc = GetHeader(msg, "Bcc");
+            detail.CC = GetHeader(msg, "Cc");
+            detail.BCC = GetHeader(msg, "Bcc");
             detail.Subject = GetHeader(msg, "Subject");
 
             var dateRaw = GetHeader(msg, "Date");
 
-            if (DateTimeOffset.TryParse(dateRaw, out var dto))
+            Debug.WriteLine($"Raw Date Header: {dateRaw}");
+
+            if (RFC2822TimeConverter.TryParseRfc2822Like(dateRaw, out var dto))
             {
+                dto = RFC2822TimeConverter.ConvertToTimeZone(dto, "Korea Standard Time");
                 detail.Date = dto;
             }
 
@@ -200,7 +210,7 @@ namespace MailMail.Gmail
                     var a = await svc.Users.Messages.Attachments.Get("me", messageID, att.AttachmentID).ExecuteAsync();
                     if (!string.IsNullOrEmpty(a.Data))
                     {
-                        att.Content = FromBase64Url(a.Data);
+                        att.Content = Helper.Base64.FromBase64(a.Data);
                     }
                 }
             }
@@ -208,9 +218,9 @@ namespace MailMail.Gmail
             return detail;
         }
 
-        public static async Task<bool> SendMailAsync(string username, string to, string subject, string text, string? html = null)
+        public static async Task<bool> SendMailAsync(string username, SentMail mail)
         {
-            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(to) || string.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(mail.To) || string.IsNullOrEmpty(mail.Text))
             {
                 throw new ArgumentException("Username, recipient email, and message text cannot be null or empty.");
             }
@@ -226,17 +236,17 @@ namespace MailMail.Gmail
             var msg = new MimeMessage();
 
             msg.From.Add(new MailboxAddress(string.Empty, from));
-            msg.To.Add(MailboxAddress.Parse(to));
-            msg.Subject = subject ?? "";
+            msg.To.Add(MailboxAddress.Parse(mail.To));
+            msg.Subject = mail.Subject ?? "";
 
             var body = new BodyBuilder
             {
-                TextBody = text ?? ""
+                TextBody = mail.Text ?? ""
             };
 
-            if (!string.IsNullOrEmpty(html))
+            if (!string.IsNullOrEmpty(mail.HTML))
             {
-                body.HtmlBody = html;
+                body.HtmlBody = mail.HTML;
             }
 
             msg.Body = body.ToMessageBody();
@@ -247,14 +257,14 @@ namespace MailMail.Gmail
             await msg.WriteToAsync(ms);
             ms.Position = 0;
 
-            var raw = Base64UrlEncode(ms.ToArray());
+            var raw = Helper.Base64.ToBase64(ms.ToArray());
             var gmailMsg = new Message { Raw = raw };
             var sent = await svc.Users.Messages.Send(gmailMsg, "me").ExecuteAsync();
 
             return !string.IsNullOrEmpty(sent?.Id);
         }
         
-        private static void TraversePart(MessagePart part, MailDetail detail, string? parentMime)
+        private static void TraversePart(MessagePart part, DetailedMail detail, string? parentMime)
         {
             if (part == null) return;
 
@@ -272,7 +282,7 @@ namespace MailMail.Gmail
             // text/plain or text/html bodies
             if (mime.StartsWith("text/plain", StringComparison.OrdinalIgnoreCase) && part.Body?.Data != null)
             {
-                var text = Encoding.UTF8.GetString(FromBase64Url(part.Body.Data));
+                var text = Encoding.UTF8.GetString(Helper.Base64.FromBase64(part.Body.Data));
                 if (!string.IsNullOrEmpty(text))
                 {
                     if (detail.TextBody.Length > 0) detail.TextBody += "\n";
@@ -282,11 +292,11 @@ namespace MailMail.Gmail
             }
             if (mime.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) && part.Body?.Data != null)
             {
-                var html = Encoding.UTF8.GetString(FromBase64Url(part.Body.Data));
+                var html = Encoding.UTF8.GetString(Helper.Base64.FromBase64(part.Body.Data));
                 if (!string.IsNullOrEmpty(html))
                 {
                     // Concatenate if multiple alternative parts exist
-                    detail.HtmlBody += html;
+                    detail.HTMLBody += html;
                 }
                 return;
             }
@@ -317,26 +327,9 @@ namespace MailMail.Gmail
                     Filename = filename,
                     MimeType = mime,
                     Size = part.Body?.Size,
-                    Content = FromBase64Url(part.Body?.Data ?? "")
+                    Content = Helper.Base64.FromBase64(part.Body?.Data ?? "")
                 });
             }
-        }
-
-        private static string Base64UrlEncode(byte[] input)
-        {
-            return Convert.ToBase64String(input).Replace('+', '-').Replace('/', '_').TrimEnd('=');
-        }
-
-        private static byte[] FromBase64Url(string input)
-        {
-            // Convert Base64Url to standard Base64 by padding and replacing characters
-            var base64 = input.Replace('-', '+').Replace('_', '/');
-            switch (base64.Length % 4)
-            {
-                case 2: base64 += "=="; break;
-                case 3: base64 += "="; break;
-            }
-            return Convert.FromBase64String(base64);
         }
 
         private static string GetHeader(Message msg, string name)

@@ -1,18 +1,18 @@
 ﻿namespace MailMail.Gmail
 {
-    public sealed class MailDetail
+    public sealed class DetailedMail
     {
         public string ID { get; set; } = "";
-        public string ThreadId { get; set; } = "";
+        public string ThreadID { get; set; } = "";
         public string From { get; set; } = "";
         public string To { get; set; } = "";
-        public string Cc { get; set; } = "";
-        public string Bcc { get; set; } = "";
+        public string CC { get; set; } = "";
+        public string BCC { get; set; } = "";
         public string Subject { get; set; } = "";
         public DateTimeOffset? Date { get; set; }
         public string Snippet { get; set; } = "";
         public string TextBody { get; set; } = "";   // concatenated text/plain parts
-        public string HtmlBody { get; set; } = "";   // concatenated text/html parts
+        public string HTMLBody { get; set; } = "";   // concatenated text/html parts
         public List<MailAttachment> Attachments { get; set; } = [];
     }
 

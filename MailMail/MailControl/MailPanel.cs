@@ -1,11 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace MailMail
+﻿namespace MailMail.MailControl
 {
     public class MailPanel : ListView
     {
@@ -35,7 +28,7 @@ namespace MailMail
             }
 
             var item = SelectedItems[0];
-            var mail = item.Tag as Gmail.Mail;
+            var mail = item.Tag as Gmail.ReceivedMail;
             
             if (mail == null)
             {
@@ -44,34 +37,28 @@ namespace MailMail
 
             var detail = await Gmail.Service.GetMailDetailAsync(Username, mail.ID);
 
-            MessageBox.Show(
-                $"From: {detail.From}\n" +
-                $"To: {detail.To}\n" +
-                $"Subject: {detail.Subject}\n" +
-                $"Date: {detail.Date?.ToString("yyyy-MM-dd HH:mm:ss")}\n\n" +
-                $"{detail.TextBody}",
-                "Mail Detail",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information
-            );
+            new EmailForm(detail)
+            {
+                Text = mail.Subject,
+                Width = 800,
+                Height = 600
+            }.ShowDialog(this);
         }
 
         public async Task UpdateMails()
         {
             await Gmail.Service.Setup(Username);
 
-            var items = await Gmail.Service.GetMailListAsync(Username, 10, 30);
+            var items = await Gmail.Service.GetMailListAsync(Username);
 
             Invoke(Items.Clear);
 
             foreach (var mail in items ?? [])
             {
-                DateTimeOffset.TryParse(mail.Date, out var dto);
-
                 var item = new ListViewItem(mail.Subject);
 
                 item.SubItems.Add(mail.From);
-                item.SubItems.Add(dto.ToString("yyyy-MM-dd HH:mm:ss"));
+                item.SubItems.Add(mail.Date.ToString());
                 item.Tag = mail;
 
                 Invoke(() => Items.Add(item));
